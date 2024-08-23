@@ -1,0 +1,6 @@
+2024/08/20-11:52:14.431 5a20 Creating DB H:/StudySpace/Assignments_CGRA359/DestructionDemo/Saved/webcache_4430\IndexedDB\https_www.youtube-nocookie.com_0.indexeddb.leveldb since it was missing.
+2024/08/20-11:52:14.437 5a20 Reusing MANIFEST H:/StudySpace/Assignments_CGRA359/DestructionDemo/Saved/webcache_4430\IndexedDB\https_www.youtube-nocookie.com_0.indexeddb.leveldb/MANIFEST-000001
+2024/08/20-11:54:01.689 6ce0 Level-0 table #5: started
+2024/08/20-11:54:01.691 6ce0 Level-0 table #5: 1166 bytes OK
+2024/08/20-11:54:01.695 6ce0 Delete type=0 #3
+2024/08/20-11:54:01.696 6ce0 Manual compaction at level-0 from (begin) .. (end); will stop at (end)

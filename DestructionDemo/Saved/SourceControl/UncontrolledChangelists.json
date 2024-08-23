@@ -1,0 +1,15 @@
+{
+	"version": 1,
+	"changelists": [
+		{
+			"guid": "00000000000000000000000000000000",
+			"description": "Default Uncontrolled Changelist",
+			"files": [
+				"H:/StudySpace/Assignments_CGRA359/DestructionDemo/Content/StarterContent/HDRI/HDRI_Epic_Courtyard_Daylight.uasset",
+				"H:/StudySpace/Assignments_CGRA359/DestructionDemo/Content/DestructionFX/Levels/Level_01_Basic.umap",
+				"H:/StudySpace/Assignments_CGRA359/DestructionDemo/Content/DestructionFX/Chaos/GeometryCollection/GC_Wall1.uasset",
+				"H:/StudySpace/Assignments_CGRA359/DestructionDemo/Content/DestructionFX/Chaos/GeometryCollection/GC_GC_Wall2.uasset"
+			]
+		}
+	]
+}
