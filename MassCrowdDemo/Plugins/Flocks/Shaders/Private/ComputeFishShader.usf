@@ -1,0 +1,538 @@
+#pragma once
+#include "/Engine/Public/Platform.ush"
+
+#ifndef PI
+#define PI 3.14159265359f
+#endif 
+
+#define MAX_NEIGHBOUR_COUNT 10u
+
+struct FInfluenceQueryResult {
+	float3 ClosestInnerPoint;
+	float3 ClosestOuterPoint;
+	float3 InvalidHeading;
+	int VolumeIndex;
+};
+
+struct BoidTableData
+{
+	float3 Position;
+	float Scale;
+	float3 Heading;
+	float Turning;
+	float Speed;
+	int Group;
+	int MeshIndex;
+	float Health;
+	float MaxHealth;
+	// 0th bit set if Goaling - 1st bit set if Fleeing
+	int Action;
+	bool bIsPendingDelete;
+	int NumVolumesAffecting;
+	int VolumesAffectingIndices[MAX_VOLUMES];
+};
+
+struct VolumeTableData
+{
+	int VolumeType;
+	int VolumeShape;
+	int VolumeUseFalloff;
+	float VolumeFalloff;
+	float3 VolumeInnerExtents;
+	float VolumeInnerRadius;
+	float3 VolumeOuterExtents;
+	float VolumeOuterRadius;
+	float4x4 VolumeWorldToLocal;
+	float4x4 VolumeLocalToWorld;
+	float3 VolumePosition;
+	int VolumeInfluencesGroups;
+	float3 VolumeRotation;
+	float Padding;
+};
+
+struct GroupTableData
+{
+	float GroupAlignment;
+	float GroupCohesion;
+	float GroupSeparation;
+	float GroupGoal;
+	float GroupFlee;
+	float GroupRestriction;
+	float GroupSeparationRadius;
+	float GroupCohesionRadius;
+	float GroupAlignmentRadius;
+	float GroupNonVerticalMovementFactor;
+	float2 Padding;
+	int GroupResponseToGroups[MAX_GROUPS];
+};
+
+int BoidCount;
+int VolumeCount;
+int CalculationsPerThread;
+int MaxNeighbourChecks;
+float DeltaSeconds;
+float CellSize;
+RWStructuredBuffer<uint> SortedCellList;
+RWStructuredBuffer<uint> CellOffsetList;
+RWStructuredBuffer<uint> CellBoidCount;
+RWStructuredBuffer<BoidTableData> BoidData;
+RWStructuredBuffer<VolumeTableData> VolumeData;
+RWStructuredBuffer<GroupTableData> GroupData;
+RWStructuredBuffer<BoidTableData> OutBoidData;
+
+float3 SafeNormalize(float3 _v)
+{
+	return length(_v) > 0.0f ? normalize(_v) : float3(1.0f, 0.0f, 0.0f);
+}
+
+float3 TransformPosition(float3 _v, float4x4 _m)
+{
+	return mul(transpose(_m), float4(_v, 1.0f)).xyz;
+}
+
+uint GetFlatCellIndex(int3 _cellVector) {
+	const uint p1 = 73856093; // some large primes
+	const uint p2 = 19349663;
+	const uint p3 = 83492791;
+	int n = p1 * _cellVector.x ^ p2*_cellVector.y ^ p3*_cellVector.z;
+	n %= TOTAL_CELLS;
+	n = abs(n);
+	return n;
+}
+
+float3 slerp(float3 current, float3 target, float dt, float maxAngle)
+{
+	float t = (dt * maxAngle) / (360.0f);
+
+    // Dot product - the cosine of the angle between 2 vectors.
+    float d = dot(current, target);     
+
+	if(d > 0.99f)
+	{
+		return target;
+	}
+
+    // Clamp it to be in the range of Acos()
+    // This may be unnecessary, but floating point
+    // precision can be a fickle mistress.
+    d = clamp(d, -1, 1);
+
+    // Acos(d) returns the angle between start and end,
+    // And multiplying that by percent returns the angle between
+    // start and the final result.
+    float delta = acos(d);
+    float theta = min(1.0f, t);
+
+    float3 relativeVec = normalize(target - current*d); // Orthonormal basis
+
+    float3 slerped = ((current*cos(theta)) + (relativeVec*sin(theta)));
+	return slerped;
+}
+
+float3 MoveTowards(float3 _current, float3 _target, float _dt, float _maxDistanceDelta) {
+	const float3 delta = _target - _current;
+	const float deltaM = length(delta);
+	const float maxStep = _maxDistanceDelta * _dt;
+
+	if( deltaM > maxStep )
+	{
+		if( maxStep > 0.f )
+		{
+			const float3 deltaN = delta / deltaM;
+			return _current + deltaN * maxStep;
+		}
+		else
+		{
+			return _current;
+		}
+	}
+
+	return _target;
+}
+
+float InverseLerp(float _value, float _minRange, float _maxRange)
+{
+	return _minRange == _maxRange ? 0.0f : (_value - _minRange) / (_maxRange - _minRange);
+}
+
+float3 RemoveDirectionFromVector(float3 _v, float3 _direction) {
+	float d = dot(_v, _direction);
+	
+	if(d > 0.0f)
+	{
+		_v -= _direction * d;
+	}
+	
+	return _v;
+}
+
+bool BoxContainsPoint(float3 _p, float4x4 _worldToLocal, float3 _extents) {
+	float3 localP = TransformPosition(_p, _worldToLocal);
+	float3 min = -_extents;
+	float3 max = _extents;
+
+	return 
+		(min.x - localP.x) * (max.x - localP.x) <= 0.0f &&
+		(min.y - localP.y) * (max.y - localP.y) <= 0.0f &&
+		(min.z - localP.z) * (max.z - localP.z) <= 0.0f;
+}
+
+bool SphereContainsPoint(float3 _p, float4x4 _worldToLocal, float _radius) {
+	float3 localP = TransformPosition(_p, _worldToLocal);
+	float d = length(localP);
+	return d < _radius;
+}
+
+float GetSphericalInfluence(float3 _position, float4x4 _worldToLocal, float _innerRadius, float _outerRadius, float _falloff)
+{
+	float3 localP = TransformPosition(_position, _worldToLocal);
+	float distanceFromEpicenter = length(localP);
+
+	if (distanceFromEpicenter >= _outerRadius)
+	{
+		// outside the radius, no effect
+		return 0.0f;
+	}
+
+	if ((_falloff == 0.0f) || (distanceFromEpicenter <= _innerRadius))
+	{
+		// no falloff or inside inner radius means full effect
+		return 1.0f;
+	}
+
+	// calculate the interpolated scale
+	float influence = 1.f - ((distanceFromEpicenter - _innerRadius) / (_outerRadius - _innerRadius));
+	influence = pow(influence, _falloff);
+
+	return influence;
+}
+
+float GetBoxInfluence(float3 _samplePosition, float4x4 _worldToLocal, float3 _innerExtents, float3 _outerExtents, float _falloff)
+{
+	if (BoxContainsPoint(_samplePosition, _worldToLocal, _innerExtents))
+	{
+		return 1.0f;
+	}
+	else if (!BoxContainsPoint(_samplePosition, _worldToLocal, _outerExtents))
+	{
+		return 0.0f;
+	}
+	else
+	{
+		float3 localP = TransformPosition(_samplePosition, _worldToLocal);
+		float inf = 0.0f;
+
+		float inf1 = localP.x > _innerExtents.x ? InverseLerp(localP.x, _outerExtents.x, _innerExtents.x) : 0.0f;
+		float inf2 = localP.y > _innerExtents.y ? InverseLerp(localP.y, _outerExtents.y, _innerExtents.y) : 0.0f;
+		float inf3 = localP.z > _innerExtents.z ? InverseLerp(localP.z, _outerExtents.z, _innerExtents.z) : 0.0f;
+		float inf4 = localP.x < -_innerExtents.x ? InverseLerp(localP.x, -_outerExtents.x, -_innerExtents.x) : 0.0f;
+		float inf5 = localP.y < -_innerExtents.y ? InverseLerp(localP.y, -_outerExtents.y, -_innerExtents.y) : 0.0f;
+		float inf6 = localP.z < -_innerExtents.z ? InverseLerp(localP.z, -_outerExtents.z, -_innerExtents.z) : 0.0f;
+
+		inf = max(inf, inf1);
+		inf = max(inf, inf2);
+		inf = max(inf, inf3);
+		inf = max(inf, inf4);
+		inf = max(inf, inf5);
+		inf = max(inf, inf6);
+ 
+		return pow(inf, _falloff);
+	}
+}
+
+float GetInfluence(float3 _samplePosition, VolumeTableData _v)
+{
+	if (_v.VolumeShape == 0)
+	{
+		return GetSphericalInfluence(_samplePosition, _v.VolumeWorldToLocal, _v.VolumeInnerRadius, _v.VolumeOuterRadius, _v.VolumeUseFalloff != 0 ? _v.VolumeFalloff : 0.0f);
+	}
+	else if(_v.VolumeShape == 1)
+	{
+		return GetBoxInfluence(_samplePosition, _v.VolumeWorldToLocal, _v.VolumeInnerExtents, _v.VolumeOuterExtents, _v.VolumeUseFalloff != 0 ? _v.VolumeFalloff : 0.0f);
+	}
+	else
+	{
+		return 0.0f;
+	}
+}
+
+float3 GetClosestInnerPoint(float3 _samplePosition, VolumeTableData _v)
+{
+	float3 localP = TransformPosition(_samplePosition, _v.VolumeWorldToLocal);
+
+	if (_v.VolumeShape == 0)
+	{
+		return TransformPosition(SafeNormalize(localP) * _v.VolumeInnerRadius, _v.VolumeLocalToWorld);
+	}
+	else if(_v.VolumeShape == 1)
+	{
+		return TransformPosition(clamp(localP, -_v.VolumeInnerExtents, _v.VolumeInnerExtents), _v.VolumeLocalToWorld);
+	}
+	else
+	{
+		return _samplePosition;
+	}
+}
+
+float3 GetClosestOuterPoint(float3 _samplePosition, VolumeTableData _v)
+{
+	float3 localP = TransformPosition(_samplePosition, _v.VolumeWorldToLocal);
+
+	if (_v.VolumeShape == 0)
+	{
+		return TransformPosition(SafeNormalize(localP) * _v.VolumeOuterRadius, _v.VolumeLocalToWorld);
+	}
+	else if(_v.VolumeShape == 1)
+	{
+		return TransformPosition(clamp(localP, -_v.VolumeOuterExtents, _v.VolumeOuterExtents), _v.VolumeLocalToWorld);
+	}
+	else
+	{
+		return _samplePosition;
+	}
+}
+
+void GetClosestInnerAndOuterPoints(float3 _samplePosition, VolumeTableData _v, out float3 _outInner, out float3 _outOuter)
+{
+	_outInner = _samplePosition;
+	_outOuter = _samplePosition;
+
+	float3 localP = TransformPosition(_samplePosition, _v.VolumeWorldToLocal);
+
+	if (_v.VolumeShape == 0)
+	{
+		_outInner = TransformPosition(SafeNormalize(localP) * _v.VolumeInnerRadius, _v.VolumeLocalToWorld);
+		_outOuter = TransformPosition(SafeNormalize(localP) * _v.VolumeOuterRadius, _v.VolumeLocalToWorld);
+	}
+	else if(_v.VolumeShape == 1)
+	{
+		_outInner = TransformPosition(clamp(localP, -_v.VolumeInnerExtents, _v.VolumeInnerExtents), _v.VolumeLocalToWorld);
+		_outOuter = TransformPosition(clamp(localP, -_v.VolumeOuterExtents, _v.VolumeOuterExtents), _v.VolumeLocalToWorld);
+	}
+}
+
+[numthreads(THREADGROUPSIZE_X, THREADGROUPSIZE_Y, THREADGROUPSIZE_Z)]
+void MainComputeShader(uint3 ThreadId : SV_DispatchThreadID) {		
+	for (int iteration = 0; iteration < CalculationsPerThread; iteration++) {		
+		int currentThreadId = CalculationsPerThread * ThreadId.x + iteration;
+		
+		if (currentThreadId > BoidCount)
+			return;
+
+		float3 heading = BoidData[currentThreadId].Heading;
+		float3 position = BoidData[currentThreadId].Position;
+		int group = BoidData[currentThreadId].Group;
+
+		float3 steerCohesion = { 0.0f, 0.0f, 0.0f };
+		float3 steerSeparation = { 0.0f, 0.0f, 0.0f };
+		float3 steerAlignment = { 0.0f, 0.0f, 0.0f };
+		float3 steerGoal = { 0.0f, 0.0f, 0.0f };
+		float3 steerFlee = { 0.0f, 0.0f, 0.0f };
+		float3 steerRest = { 0.0f, 0.0f, 0.0f };
+		float3 steerNonVertical = { 0.0f, 0.0f, 0.0f };
+
+		float cohesionCnt = 0.0f;
+		float separationCnt = 0.0f;
+		float alignmentCnt = 0.0f;
+		float goalCnt = 0.0f;
+		float fleeCnt = 0.0f;
+		float restCnt = 0.0f;
+		float totalRestrictionVolumes = 0.0f;
+			
+		int3 cellIndex = int3(position / CellSize);
+		for(int i = -1; i <= 1; ++i)
+		{
+			for(int j = -1; j <= 1; ++j)
+			{
+				for(int k = -1; k <= 1; ++k)
+				{
+					int3 neighbourIndex = cellIndex + int3(i, j, k);
+					uint flatNeighbourIndex = GetFlatCellIndex(neighbourIndex);
+					
+					//Because of the way were shuffling the SortedCellList - we can get away with only 1-2 neighbour checks per cell per frame
+					uint neighbourIter = CellOffsetList[flatNeighbourIndex];
+					uint cellCount = CellBoidCount[flatNeighbourIndex];
+					cellCount = min(cellCount, MaxNeighbourChecks);
+					
+					for (uint w = neighbourIter; w < neighbourIter + cellCount; ++w)
+					{
+						uint boidIndex = (SortedCellList[w] & 0x0000ffff) >> 0;
+						int theirGroup = BoidData[boidIndex].Group;
+
+						float3 theirPosition = BoidData[boidIndex].Position;
+						float3 theirHeading = BoidData[boidIndex].Heading;
+						
+						int responseType = GroupData[group].GroupResponseToGroups[theirGroup];
+						
+						if(responseType == 1)
+						{
+							float d = length(position - theirPosition);
+							
+							//Safety check for if theyre in the exact same location
+							if(d > 1.0f)
+							{
+								if(d < GroupData[group].GroupSeparationRadius)
+								{
+									steerSeparation += position - theirPosition;
+									separationCnt++;
+								}
+								
+								if(d < GroupData[group].GroupCohesionRadius)
+								{
+									steerCohesion += theirPosition - position;
+									cohesionCnt++;
+								}
+								
+								if(d < GroupData[group].GroupAlignmentRadius)
+								{
+									steerAlignment += theirHeading;
+									alignmentCnt++;
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		float closestClampedDist = 100000000.0f;
+		FInfluenceQueryResult bestRestrictionResult;
+		bool isInsideRestrictionVolume = false;
+
+		OutBoidData[currentThreadId].Action = 0;
+		OutBoidData[currentThreadId].NumVolumesAffecting = 0;
+
+		for(int v = 0; v < VolumeCount; ++v)
+		{
+			VolumeTableData volume = VolumeData[v];
+
+			if((volume.VolumeInfluencesGroups & (1 << group)) != 0)
+			{
+				float inf = GetInfluence(position, volume);
+
+				// inf > 0 = Were inside the volume
+				if(inf > 0.0f)
+				{
+					OutBoidData[currentThreadId].VolumesAffectingIndices[OutBoidData[currentThreadId].NumVolumesAffecting] = v;
+					OutBoidData[currentThreadId].NumVolumesAffecting += 1;
+				}
+
+				if(volume.VolumeType == 0)
+				{
+					if(inf > 0.0f)
+					{
+						steerGoal += SafeNormalize(TransformPosition(float3(0.0f, 0.0f, 0.0f), volume.VolumeLocalToWorld) - position) * inf;
+						OutBoidData[currentThreadId].Action |= (1 << 0);
+						goalCnt++;
+					}
+				}
+				else if(volume.VolumeType == 1)
+				{
+					if(inf > 0.0f)
+					{
+						steerFlee += SafeNormalize(position - TransformPosition(float3(0.0f, 0.0f, 0.0f), volume.VolumeLocalToWorld)) * inf;
+						OutBoidData[currentThreadId].Action |= (1 << 1);
+						fleeCnt++;
+					}
+				}
+				else if(volume.VolumeType == 2)
+				{
+					float restInf = 1.0f - inf;
+				
+					if (restInf > 0.0f && restInf < 1.0f)
+					{
+						float3 closestInnerPoint = GetClosestInnerPoint(position, volume);
+						steerRest += SafeNormalize(closestInnerPoint - position) * restInf;
+						restCnt++;
+						isInsideRestrictionVolume = true;
+					}
+					else if (restInf >= 1.0f)
+					{
+						float3 closestInnerPoint = position;
+						float3 closestOuterPoint = position;
+						GetClosestInnerAndOuterPoints(position, volume, closestInnerPoint, closestOuterPoint);
+					
+						float dist = length(position - closestOuterPoint);
+						if (dist < closestClampedDist)
+						{
+							closestClampedDist = dist;
+							bestRestrictionResult.ClosestInnerPoint = closestInnerPoint;
+							bestRestrictionResult.ClosestOuterPoint = closestOuterPoint;
+							bestRestrictionResult.InvalidHeading = closestOuterPoint - position;
+							bestRestrictionResult.InvalidHeading = SafeNormalize(bestRestrictionResult.InvalidHeading);
+							bestRestrictionResult.VolumeIndex = v;
+						}
+					}
+					else
+					{
+						isInsideRestrictionVolume = true;
+					}
+				
+					totalRestrictionVolumes++;
+				}
+			}
+		}
+
+		if(alignmentCnt > 0)
+		{
+			steerAlignment /= alignmentCnt;
+			steerAlignment = normalize(steerAlignment);
+		}
+		
+		if(cohesionCnt > 0)
+		{
+			steerCohesion /= cohesionCnt;
+			steerCohesion = normalize(steerCohesion);
+		}
+		
+		if(separationCnt > 0)
+		{
+			steerSeparation /= separationCnt;
+			steerSeparation = normalize(steerSeparation);
+		}
+		
+		if(goalCnt > 0)
+		{
+			steerGoal /= goalCnt;
+			steerGoal = normalize(steerGoal);
+		}
+		
+		if(fleeCnt > 0)
+		{
+			steerFlee /= fleeCnt;
+			steerFlee = normalize(steerFlee);
+		}
+		
+		if(restCnt > 0)
+		{
+			steerRest /= restCnt;
+			steerRest = normalize(steerRest);
+		}
+		
+		steerNonVertical = SafeNormalize(float3(heading.x, heading.y, 0.0f)) * GroupData[group].GroupNonVerticalMovementFactor;
+
+		steerAlignment *= GroupData[group].GroupAlignment;
+		steerCohesion *= GroupData[group].GroupCohesion;
+		steerSeparation *= GroupData[group].GroupSeparation;
+		steerGoal *= GroupData[group].GroupGoal;
+		steerFlee *= GroupData[group].GroupFlee;
+		steerRest *= GroupData[group].GroupRestriction;
+		
+		float3 newHeading = heading + steerAlignment + steerCohesion + steerSeparation + steerGoal + steerFlee + steerRest + steerNonVertical;
+		newHeading = SafeNormalize(newHeading);
+		
+		float turning = BoidData[currentThreadId].Turning;
+		if(!isInsideRestrictionVolume && totalRestrictionVolumes > 0.0f)
+		{
+			newHeading = SafeNormalize(bestRestrictionResult.ClosestInnerPoint - position);
+			turning *= 5.0f;
+			OutBoidData[currentThreadId].Position = float4(bestRestrictionResult.ClosestOuterPoint, 1.0f);
+
+			OutBoidData[currentThreadId].VolumesAffectingIndices[OutBoidData[currentThreadId].NumVolumesAffecting] = bestRestrictionResult.VolumeIndex;
+			OutBoidData[currentThreadId].NumVolumesAffecting += 1;
+		}
+		
+		OutBoidData[currentThreadId].Heading = float4(SafeNormalize(slerp(heading, newHeading, DeltaSeconds, turning)), 1.0f);		
+		OutBoidData[currentThreadId].Position = float4(OutBoidData[currentThreadId].Position + (OutBoidData[currentThreadId].Heading * DeltaSeconds * BoidData[currentThreadId].Speed), 1.0f);
+	}
+}

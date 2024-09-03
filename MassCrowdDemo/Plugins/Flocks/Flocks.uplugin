@@ -1,0 +1,34 @@
+{
+	"FileVersion": 3,
+	"Version": 15,
+	"VersionName": "1.3.3",
+	"FriendlyName": "Flocks",
+	"Description": "Simulates flocks with high numbers, at high speeds",
+	"Category": "Gameplay",
+	"CreatedBy": "Justin Kiesskalt",
+	"CreatedByURL": "",
+	"DocsURL": "https://docs.google.com/document/d/1lDS1jsp_KvdG1UzseFTNss3n3-Dg6lHY1QfX_7AH2nQ/edit?usp=sharing",
+	"MarketplaceURL": "com.epicgames.launcher://ue/marketplace/product/206de3770363494f98c9133910dbae8c",
+	"SupportURL": "",
+	"EngineVersion": "5.4.0",
+	"CanContainContent": true,
+	"Installed": true,
+	"Modules": [
+		{
+			"Name": "Flocks",
+			"Type": "Runtime",
+			"LoadingPhase": "PostConfigInit",
+			"PlatformDenyList": [
+				"Android",
+				"IOS",
+				"Linux",
+				"LinuxArm64"
+			]
+		},
+		{
+			"Name": "FlocksEditor",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		}
+	]
+}

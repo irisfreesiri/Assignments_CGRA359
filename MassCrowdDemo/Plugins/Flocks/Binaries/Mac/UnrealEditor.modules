@@ -1,0 +1,8 @@
+{
+	"BuildId": "33043543",
+	"Modules": 
+	{
+		"Flocks": "UnrealEditor-Flocks.dylib",
+		"FlocksEditor": "UnrealEditor-FlocksEditor.dylib"
+	}
+}
