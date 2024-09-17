@@ -14,7 +14,7 @@ If possible, I hope to implement similar technologies in my own projects.
 My independent learning is currently divided into two areas. 
 - The first is familiarizing myself with Unreal Engine, particularly in terms of the interaction between C++ and Blueprint. 
 - The second is researching and studying the content we plan to create for the R2R project.
-![Animation Sit Down](https://github.com/irisfreesiri/Assignments_CGRA359/raw/main/Documents/Animation-SitDown.gif)
+![Animation Sit Down](./images/Animation-SitDown.gif)
 ## Familiarizing with Unreal Engine
 Create an `InteractiveClass` for the sofa model, add a `BoxCollision` component, and detect if a character enters the interaction area. When the character enters, display a "Sit" button; when the character leaves, hide the button. Upon clicking the "Sit" button, rotate the character to face the sofa, disable gravity, collisions, and input, and play the sitting animation, finally displaying a "Stand" button. Clicking the "Stand" button reverses these actions.
 - Adding an `AActor` class in C++, exposing relevant properties to the UE panel, adding `BoxCollision` events, and defining a C++ function callable by Blueprint.
@@ -24,19 +24,19 @@ Create an `InteractiveClass` for the sofa model, add a `BoxCollision` component,
 I have reviewed some work related to rendering in destruction-type games, which can generally be categorized into three main areas:
 ### Chaos Destruction & Niagara
 https://dev.epicgames.com/community/learning/tutorials/wrdj/unreal-engine-chaos-destruction-niagara
-![Chaos Destruction](https://github.com/irisfreesiri/Assignments_CGRA359/raw/main/Documents/city-chaos-destruction-small.gif)
+![Chaos Destruction](./images/city-chaos-destruction-small.gif)
 ### Visual Effects
 https://dev.epicgames.com/documentation/en-us/unreal-engine/creating-visual-effects-in-niagara-for-unreal-engine
-![Physics Fluids](https://github.com/irisfreesiri/Assignments_CGRA359/raw/main/Documents/physics-fluids-1.gif)
+![Physics Fluids](./images/physics-fluids-1.gif)
 ### Global Illumination
 https://www.unrealengine.com/en-US/tech-blog/unreal-engine-5-goes-all-in-on-dynamic-global-illumination-with-lumen
-![Global Illumination](https://github.com/irisfreesiri/Assignments_CGRA359/raw/main/Documents/Pasted%20image%2020240731122556.png)
+![Global Illumination](./images/Pasted%20image%2020240731122556.png)
 #### Ray Tracing
 https://www.youtube.com/live/qPmwbp7A3BQ?t=9888s
 ### Hair Physics
 (only out of personal interest, as R2R is a robot-themed destruction game and may not feature this aspect)
 https://dev.epicgames.com/documentation/en-us/unreal-engine/hair-physics-in-unreal-engine
-![Hair Physics](https://github.com/irisfreesiri/Assignments_CGRA359/raw/main/Documents/hair-physics-1.gif)
+![Hair Physics](./images/hair-physics-1.gif)
 
 # Future Learning Goals
 After discussing with Dr. Simon on Wednesday, I will focus on the Destruction aspect for the next two weeks:
