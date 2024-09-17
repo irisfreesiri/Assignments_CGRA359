@@ -28,7 +28,7 @@ Iris (I) has implemented the civilian functionality, which includes basic moveme
 # 4. Technical Challenges and Solutions
 The technical challenges of the Civilian task can be divided into three main parts: 
 1. Rendering tens of thousands of civilians on screen, 
-2. AI logic (obstacle avoidance and evasion of the player), and 
+2. AI logic (obstacle avoidance and fleeing from the player), and 
 3. Detecting damage range and removing the corresponding civilians.
 ## 4.1 Rendering
 Before taking on this task, I conducted some research and explored potential technical solutions:
@@ -36,16 +36,47 @@ Before taking on this task, I conducted some research and explored potential tec
 2. Instanced Static Mesh (Reference: [Unreal Engine 5 Tutorial - Instanced Static Meshes - ISM/HISM](https://www.youtube.com/watch?v=cfR36FTbvcQ))
 3. Mass Entity (Reference: [Large Numbers of Entities with Mass in UE5 | Feature Highlight | State of Unreal 2022](https://www.youtube.com/watch?v=f9q8A-9DvPo&t=219s))
 After comparing the implementation complexity and the project requirements for interactive civilians, I chose the second option.
+![Implementing Instanced Static Mesh](./images/Implementing_InstancedStaticMesh.png)]
+At the same time, I'm also considering including Niagara as a solution for damage effects performance optimization in our future development plan.
 ## 4.2 AI Logic
-Additionally, based on the Instanced Static Mesh, I further implemented some AI logic features, such as avoiding building obstacles and evading the player), spherical damage detection.
-## 4.3 Detecting Damage Range
-## Niagara Crowds
-## Instanced Static Mesh
-## Mass Entity
-## Avoidance Obstacle
-## Evading Player
-## Timer Spawn
+Additionally, based on the Instanced Static Mesh, I further implemented some AI logic features, such as avoiding building obstacles and fleeing from the player.
+### 4.2.1 Avoiding Obstacles
+For the obstacle avoidance part, I consulted Dr. Simon and implemented two different effects using the NavMesh and LineTrace approaches.
+![AvoidanceObstacle-SingleCivilian](./videos/AvoidanceObstacle-SingleCivilian.mp4)
+![AvoidanceObstacle-HundredCivilians](./videos/AvoidanceObstacle-HundredCivilians.mp4)
+At the same time, I compared the CPU overhead of the two different methods. With 10,000 densely packed civilians, the CPU overhead for NavMesh is around 9ms, while for LineTrace, it's around 50ms.
+![Performance-AvoidanceType](./images/Performance-AvoidanceType.png)
+I ultimately used the NavMesh approach to implement the obstacle avoidance functionality. The LineTrace method calls the `TSceneCastCommonImpWithRetryRequest` function in the underlying Physics module, while the NavMesh approach uses pre-cached `NavigationData` with the `ProjectPoint` method. As a result, NavMesh is significantly more efficient than LineTrace in terms of performance.
+### 4.2.2 Fleeing Player
+For the logic of fleeing from the player, I used a **SphereZone**. While updating the civilians' positions in parallel using **ParallelFor**, I calculate the current position of each civilian relative to the position and radius of the SphereZone. If the civilian is within the range, a force in the opposite direction is applied to it.
+![Civilian-Fleeing-Player](./videos/Civilian-Fleeing-Player.mp4)
+## 4.3 Detecting Damage
+The damage logic is divided into four stages:
+1. A damage detection function is defined in C++, similar to the **FleePlayer** logic. It also uses **ParallelFor** to check the relationship between position and radius to determine if civilians are within the damage range, ultimately returning a vector of civilians in the damage zone.
+2. The damage detection C++ function is called within the **Tick** event in Blueprints. Then, using the **ForEach** function, each civilian is iterated over, and a C++ function is called to apply damage to each civilian and remove them.
+3. At each civilian's death location, a Blueprint function is called to increase the score and display UI effects.
+4. At each civilian's death location, a **ParticleSystem** is created to display blood effects.
+![Civilian-Damage](./videos/Civilian-Damage.mp4)
 # 5. Current Limitations
+## 5.1 Frame Drop
+Although the game requirements have been initially implemented, there is a noticeable frame drop when executing the damage logic, especially when the civilians are densely packed.
+Here’s an example of an extreme case where the speed is 0:
+![Limitation-Civilian-Damage](./videos/Limitation-Civilian-Damage.mp4)
+## 5.2 Asnyc Task on Main Thread
+Although the NavMesh method for Avoid Obstacle offers significant performance improvements over LineTrace, both methods still suffer from limited parallelism. This is because `ProjectPointToNavigation` and `LineTraceSingleByChannel` must be executed on the main thread, which greatly hampers the overall parallel processing efficiency.
+![AsyncTask_on_MainThread](./images/AsyncTask_on_MainThread.png)
 # 6. Future Development Plan
-![[Pasted image 20240917204223.png]]
-# 7. Appendix
+## 6.1 More Throwable Objects
+In the next version, we plan to develop more throwable objects that produce various effects, such as black holes, lightning, and fire.
+![FuturePlane-ThrowableObjects](./images/FuturePlan-ThrowableObjects.png)
+## 6.2 More NPCs
+Tanks and police are currently in development.
+![NPC-Tank](./videos/NPC-Tank.mp4)
+## 6.3 Performance Optimazation
+As mentioned earlier in the **Current Limitations**, I have started using **Insights** to conduct some preliminary performance analysis to address the emerging performance bottlenecks.
+Based on the preliminary analysis, and in conjunction with the damage steps discussed in the **Detecting Damage** section, the additional 450ms overhead in **Slate::Tick** can be attributed to the score UI for each civilian. We plan to no longer create a separate UI score for each individual civilian, but instead display a single score UI for each batch of damage dealt.
+![Performance-Damage-UI](Performance-Damage-UI.png)
+Additionally, since the damage logic is currently executed by Blueprints using the **ForEach** method, which can only run on the main thread, it significantly increases the performance overhead. To optimize this part, I plan to move the code to a C++ function and attempt to handle the damage logic on a background thread.
+![Performance-Damage-Blueprint](./images/Performance-Damage-Blueprint.png)
+Lastly, for the particle effects, I plan to reference the **Niagara Crowds** method mentioned earlier in the **Rendering** section. For each batch of civilians taking damage, I will create a single Niagara system and sync the positions of the deceased civilians to the emitter during the **Particle Update** phase. If performance bottlenecks persist, I will consider using an **Object Pool** approach to maintain a resource pool.
+In addition to the issues already identified, we plan to continuously track and optimize the overall functionality of the project for performance.
