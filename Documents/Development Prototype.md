@@ -4,6 +4,7 @@ In this prototype, I will present the team's perspective on the current state, i
 # 2. Current State
 The image is from the first version of **REDUCED TO RUBBLE (R2R)**. In this new project, we are developing a more intense second version with more NPCs, more objective types, more power-ups, and even more spectacular destruction effects.
 ![Reduced to Rubble](./images/Reduced%20to%20Rubble.gif)
+
 We have completed the initial design as originally planned, implementing basic player control functions (including climbing, running, and jumping), building destruction, and civilian NPCs along with the directive system. 
 Building on this, we conducted testing and gathered player feedback, leading to a second round of design and development. This includes, but is not limited to, the addition of throwable objects and traps, combo mechanics, tanks, police, army functionalities, and the integration of more elements such as health bars.
 # 3. Implemented Features
@@ -12,8 +13,8 @@ We have completed the experimental level, and based on that, Curtis has started 
 ![Level-Buildings](./images/Level-Building-01.png)
 ## 3.2 Character
 The player model and animations are being implemented by Drake. The model creation and basic run, jump, and car transformation animations have been completed, and more animations are currently in progress, such as backflip and victory.
-![Player-Model-Backflip](./videos/PlayerModel-Backflip.mp4)
-![PlayerModel-Victory](./videos/PlayerModel-Victory.mp4)
+[Player-Model-Backflip](./videos/PlayerModel-Backflip.mp4)
+[PlayerModel-Victory](./videos/PlayerModel-Victory.mp4)
 Currently, the NPCs are designed with various functionalities, including civilians, polices, and tanks.
 ## 3.3 Building
 Based on the static building models, Kent used the Fracture mode to fragment the shell of each building, thereby achieving the destruction effect.
