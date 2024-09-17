@@ -49,7 +49,8 @@ Before taking on this task, I conducted some research and explored potential tec
 2. Instanced Static Mesh (Reference: [Unreal Engine 5 Tutorial - Instanced Static Meshes - ISM/HISM](https://www.youtube.com/watch?v=cfR36FTbvcQ))
 3. Mass Entity (Reference: [Large Numbers of Entities with Mass in UE5 | Feature Highlight | State of Unreal 2022](https://www.youtube.com/watch?v=f9q8A-9DvPo&t=219s))
 After comparing the implementation complexity and the project requirements for interactive civilians, I chose the second option.
-![Implementing Instanced Static Mesh](./images/Implementing_InstancedStaticMesh.png)]
+![Implementing Instanced Static Mesh](./images/Implementing_InstancedStaticMesh.png)
+
 At the same time, I'm also considering including Niagara as a solution for damage effects performance optimization in our future development plan.
 ## 4.2 AI Logic
 Additionally, based on the Instanced Static Mesh, I further implemented some AI logic features, such as avoiding building obstacles and fleeing from the player.
@@ -67,6 +68,7 @@ https://github.com/user-attachments/assets/0aeb8b7b-c6ff-41a4-b065-29f58c02012d
 
 At the same time, I compared the CPU overhead of the two different methods. With 10,000 densely packed civilians, the CPU overhead for NavMesh is around 9ms, while for LineTrace, it's around 50ms.
 ![Performance-AvoidanceType](./images/Performance-AvoidanceType.png)
+
 I ultimately used the NavMesh approach to implement the obstacle avoidance functionality. The LineTrace method calls the `TSceneCastCommonImpWithRetryRequest` function in the underlying Physics module, while the NavMesh approach uses pre-cached `NavigationData` with the `ProjectPoint` method. As a result, NavMesh is significantly more efficient than LineTrace in terms of performance.
 ### 4.2.2 Fleeing Player
 For the logic of fleeing from the player, I used a **SphereZone**. While updating the civilians' positions in parallel using **ParallelFor**, I calculate the current position of each civilian relative to the position and radius of the SphereZone. If the civilian is within the range, a force in the opposite direction is applied to it.
@@ -112,7 +114,8 @@ https://github.com/user-attachments/assets/65743576-e971-4570-99b6-e54829a6c7fb
 ## 6.3 Performance Optimazation
 As mentioned earlier in the **Current Limitations**, I have started using **Insights** to conduct some preliminary performance analysis to address the emerging performance bottlenecks.
 Based on the preliminary analysis, and in conjunction with the damage steps discussed in the **Detecting Damage** section, the additional 450ms overhead in **Slate::Tick** can be attributed to the score UI for each civilian. We plan to no longer create a separate UI score for each individual civilian, but instead display a single score UI for each batch of damage dealt.
-![Performance-Damage-UI](Performance-Damage-UI.png)
+![Performance-Damage-UI](./images/Performance-Damage-UI.png)
+
 Additionally, since the damage logic is currently executed by Blueprints using the **ForEach** method, which can only run on the main thread, it significantly increases the performance overhead. To optimize this part, I plan to move the code to a C++ function and attempt to handle the damage logic on a background thread.
 ![Performance-Damage-Blueprint](./images/Performance-Damage-Blueprint.png)
 Lastly, for the particle effects, I plan to reference the **Niagara Crowds** method mentioned earlier in the **Rendering** section. For each batch of civilians taking damage, I will create a single Niagara system and sync the positions of the deceased civilians to the emitter during the **Particle Update** phase. If performance bottlenecks persist, I will consider using an **Object Pool** approach to maintain a resource pool.
