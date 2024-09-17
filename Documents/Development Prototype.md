@@ -32,6 +32,7 @@ Ocean completed the UI and Directive System, set up the DataTable, and implement
 ![UI-DirectiveSystem](./images/UI-DirectiveSystem.png)
 ## 3.5 NPC - Civilian
 The initial civilian AI was developed by Dennis, but due to performance bottlenecks—we aimed to have tens of thousands of civilians on the screen simultaneously—the task was handed over to Iris for completion.
+
 Iris (I) has implemented the civilian functionality, which includes basic movement such as obstacle avoidance and player evasion, damage handling, and a timed spawn system.
 
 
@@ -48,6 +49,7 @@ Before taking on this task, I conducted some research and explored potential tec
 1. Niagara Crowds (Reference: [Creating Ambient Birds in Unreal with Niagara and Vertex Animations](https://www.chrismccole.com/blog/creating-ambient-birds-in-unreal-with-niagara-and-vertex-animations))
 2. Instanced Static Mesh (Reference: [Unreal Engine 5 Tutorial - Instanced Static Meshes - ISM/HISM](https://www.youtube.com/watch?v=cfR36FTbvcQ))
 3. Mass Entity (Reference: [Large Numbers of Entities with Mass in UE5 | Feature Highlight | State of Unreal 2022](https://www.youtube.com/watch?v=f9q8A-9DvPo&t=219s))
+
 After comparing the implementation complexity and the project requirements for interactive civilians, I chose the second option.
 ![Implementing Instanced Static Mesh](./images/Implementing_InstancedStaticMesh.png)
 
